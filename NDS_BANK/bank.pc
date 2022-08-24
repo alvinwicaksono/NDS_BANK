@@ -1,0 +1,399 @@
+exec sql begin declare section;
+
+int i, n, code, option, welcome;
+char connData[50] = "C##ALVIN/dsasd@//10.211.55.3:1521/xe";
+int uid = 0;
+
+char confirm[20];
+
+SQL_CURSOR c_saving;
+SQL_CURSOR c_history;
+
+
+struct
+{
+    char username[20];
+    char password[20];
+    char status[20];
+    double saving;
+}account_info;
+
+struct
+{
+    int receiverId;
+    double saving;
+}receiver_info;
+
+struct{
+    char userid[20];
+    char action[20];
+    char time[20];
+    char info[50];
+}history_info;
+
+
+exec sql end declare section;
+exec sql include sqlca;
+
+
+#include <iostream>
+#include <map>
+#include <vector>
+#include <cstdio>
+#include <functional>
+#include <cstring>
+#include <conio.h>
+using namespace std;
+
+EXEC SQL DECLARE c_saving CURSOR FOR
+                    SELECT saving
+                    FROM ms_savings WHERE user_id = :uid
+                     FOR UPDATE OF saving;
+
+
+class History{
+    int userId;
+    string action;
+    string time;
+    string info;
+
+    public:
+    History(int u, string a, string t, string i){
+        userId = u;
+        action = a;
+        time = t;
+        info = i;
+    };
+
+    int getUserid() {
+        return userId;
+    }
+    string getAction() {
+        return action;
+    }
+    string getTime() {
+        return time;
+    }
+    string getInfo() {
+        return info;
+    }
+
+
+};
+
+
+void checkConn()
+{
+if (sqlca.sqlcode==0) {
+ 
+    } else {
+            printf(sqlca.sqlerrm.sqlerrmc);
+            printf(sqlca.sqlerrp);
+            printf(sqlca.sqlwarn);
+            printf(sqlca.sqlext);
+        }
+
+}
+
+
+
+void registerAccount() {
+    cout << "Enter Username : "; 
+    cin >> account_info.username;
+    exec sql select count(*) into :i from ms_users where username = :account_info.username;
+    checkConn();
+
+
+    while(i>0){
+        cout << endl << "Username already Exist, Try Again!" << endl;
+        cin.clear();
+        cin.ignore();
+        cout << "Enter Username : "; 
+        cin >> account_info.username;
+        exec sql select count(*) into :i from ms_users where username = :account_info.username;
+        checkConn();
+    }
+
+    cout << endl << "Enter Password : ";
+    cin >> account_info.password;
+    cout << endl << "Enter Password Confirmation :";
+    cin >> confirm;
+
+    while( strcmp(account_info.password,confirm) !=0 ){
+    cout << "Password not match, Input again" << endl;
+    cout << endl << "Enter Password : ";
+    cin >> account_info.password;
+    cout << endl << "Enter Password Confirmation :";
+    cin >> confirm;
+    }
+
+    /* Query Database */
+    
+    exec sql insert into ms_users (username, password, status) values (:account_info.username, :account_info.password, 'A');
+    checkConn();
+    exec sql commit;
+    exec sql select id into :uid from ms_users where username = :account_info.username;
+    checkConn();
+    exec sql insert into tx_history(actor,action,info) values (:uid,'Register','Success Register '||:account_info.username||' Account');
+    exec sql commit;
+    checkConn();
+    uid=0;
+    cout << endl<< "Success Register " <<account_info.username << " Account, Please do Login" << endl;
+}
+
+void loginAccount(){
+    cout << "Enter Username : "; 
+    cin >> account_info.username;
+    cout << endl << "Enter Password : ";
+    cin >> account_info.password;
+
+    /* Query Database */
+    exec sql select count(*) into :i from ms_users where username = :account_info.username and password = :account_info.password;
+    checkConn();
+    if(i==0){
+        cout << "Username and password not match, Try Again or Register a new Account" << endl;
+    } else {
+        exec sql select id, status into :uid, :account_info.status from ms_users where username = :account_info.username and password = :account_info.password;
+        if(strcmp(account_info.status,"N") > 0){
+         cout << "Your Account status is freeze, Please contact Call Center to Using Account" << endl; 
+         uid = 0;
+        } else {
+         exec sql insert into tx_history(actor,action,info) values (:uid,'Login',:account_info.username||' Login to NDS BANK');
+         exec sql commit;
+         cout << endl << "Welcome, " << account_info.username << " Enjoy using NDS Bank" << endl;
+        }
+
+    }
+    
+}
+
+
+double checkSaving(){
+    exec sql open c_saving;
+    exec sql fetch c_saving into :account_info.saving;
+    exec sql commit;
+    checkConn();
+    exec sql close c_saving;
+    return(account_info.saving);
+}
+
+void withdraw(){
+    checkSaving();
+
+    cout << "Enter Nominal (Kelipatan 50.000) : ";
+    cin >> n;
+
+    while(n%50000!=0 || n>account_info.saving){
+    if(n%50000!=0){
+        cout << endl << "Nominal harus kelipatan 50.000, masukan ulang" << endl;
+    } else {
+        cout << endl << "Your Saving : Rp." << account_info.saving << endl; 
+        cout << "Saldo anda tidak mencukupi, masukan ulang" << endl;
+    }
+    cout << "Enter Nominal (Kelipatan 50.000) : " << endl;
+    cin >> n;
+    }
+
+    exec sql open c_saving;
+    exec sql fetch c_saving into :account_info.saving;
+    exec sql update ms_savings set saving = :account_info.saving-:n where current of c_saving;
+    exec sql insert into tx_history(actor,action,info) values (:uid,'Withdraw','Withdraw  Rp '||:n);
+    checkConn();
+    exec sql commit;
+    exec sql close c_saving;
+
+    checkSaving();
+
+    cout << endl << "Sukses Menarik uang : " << n << endl;
+    cout << "Your Saving : Rp." <<account_info.saving << endl;
+
+}
+
+void deposit(){
+    cout << "Enter Nominal (Kelipatan 50.000) : ";
+    cin >> n;
+
+    while(n%50000!=0){
+        cout << endl << "Nominal harus kelipatan 50.000, masukan ulang" << endl;
+        cout << "Enter Nominal (Kelipatan 50.000)" << endl;
+        cin >> n;
+    }
+
+    exec sql open c_saving;
+    exec sql fetch c_saving into :account_info.saving;
+    exec sql update ms_savings set saving = :account_info.saving+:n where current of c_saving;
+    exec sql insert into tx_history(actor,action,info) values (:uid,'Deposit','Deposit  Rp '||:n);
+
+    checkConn();
+    exec sql commit;
+    exec sql close c_saving;
+
+    checkSaving();
+
+    cout << "Success Deposit Rp." << n << endl;
+    cout << "Your Saving Rp." << account_info.saving << endl;
+    
+}
+
+void transferMoney(){
+    checkSaving();
+    cout << "Enter Receiver User ID :";
+    cin >> receiver_info.receiverId;
+    exec sql select count(*) into :i from ms_users where id = :receiver_info.receiverId and status = 'A';
+    if(i==0){
+    cout << endl << "Receiver ID not found, Try Again" << endl;
+    } else {
+        exec sql select saving into :receiver_info.saving from ms_savings where user_id = :receiver_info.receiverId;
+        cout << endl << "Enter Nominal: ";
+        cin >> n;
+        if(n>account_info.saving){
+            cout << "Your saving less than Nominal !!, Try Again" << endl;
+        } else {
+            exec sql open c_saving;
+            exec sql fetch c_saving into :account_info.saving;
+            exec sql update ms_savings set saving = :account_info.saving-:n where current of c_saving;
+            exec sql insert into tx_history(actor,action,info) values (:uid,'Transfer','Transfer Rp '||:n||' to User ID ' || :receiver_info.receiverId);
+            checkConn();
+            exec sql update ms_savings set saving = :receiver_info.saving+:n where user_id = :receiver_info.receiverId;
+            exec sql insert into tx_history(actor,action,info) values (:receiver_info.receiverId,'Transfer','Incomming Saving Rp '||:n||' From User ID ' || :uid);
+            exec sql commit;
+            checkConn();
+            exec sql close c_saving;
+            cout << "Success Transfer Rp." << n <<" to User ID " << receiver_info.receiverId <<endl;
+    
+            checkSaving();
+         }
+    }
+}
+
+void frezze(){
+exec sql update ms_users set status = 'N' where id = :uid;
+exec sql commit;
+checkConn();
+exec sql insert into tx_history(actor,action,info) values (:uid,'Freeze',:account_info.username||' Account Freeze from NDS BANK');
+exec sql commit;
+checkConn();
+cout << "Account anda berhasil di frezze" << endl;
+}
+
+
+void printHistory(){
+
+    vector<History*> histories;
+
+    EXEC SQL DECLARE c_history CURSOR FOR
+                    SELECT action, time, info 
+                    FROM tx_history WHERE actor = :uid order by id;
+
+    	exec sql open c_history;
+		EXEC SQL WHENEVER NOT FOUND DO break;
+      
+        for(;;)
+        {
+		exec sql fetch c_history into :history_info.action, :history_info.time, :history_info.info;
+		checkConn();
+        histories.push_back(new History(uid, history_info.action, history_info.time, history_info.info));
+        }
+        exec sql close c_history;
+
+        cout << "no\t Action\t\t\t Time\t\t\t Info" << endl;
+        int counter=0;
+        for(int j=0; j<histories.size(); j++){
+           counter++;
+           cout << counter <<"\t" << histories.at(j)->getAction() << "\t" << histories.at(j)->getTime() << "\t" << histories.at(j)->getInfo() << endl;
+        }
+
+
+}
+
+
+
+
+int main()
+{
+    exec sql connect :connData;
+    checkConn();
+    EXEC SQL ALLOCATE :c_saving;
+
+    
+
+    while(uid==0){
+        cout << "Welcome in NDS BANK" << endl;
+        cout<<"Select One Option Below " << endl;
+        cout<<"1. Register new Account" << endl;
+        cout<<"2. Login an Account" << endl;
+        cout << "Input Your Option: ";
+        cin >> welcome;
+        
+        switch(welcome){
+            case 1:
+            registerAccount();
+            
+            break;
+            case 2:
+            loginAccount();
+            break;
+            default:
+            cout << "Enter Correct Option!";   
+        }
+        cout << endl << "Press Any Key To Continue";
+        _getch();
+        system("cls");
+    
+     
+        while(uid!=0){
+        cout << "Username: " << account_info.username <<"\t Account ID: " << uid << endl << endl;
+        cout << "Hello, "<<account_info.username<<". Selamat Datang di NDS BANK \n Silahkan Pilih Transaksi yang akan dilakukan" << endl;
+        cout<<"1. check saving" << endl;
+        cout<<"2. Withdraw Money" << endl;
+        cout<<"3. Deposit Money" << endl;
+        cout<<"4. Transfer Money to Another Account" << endl;
+        cout<<"5. Frezze My Account" << endl;
+        cout<<"6. check History" << endl;
+        cout<<"7. Logout" << endl;
+         cout << "Input Your Option: ";
+        cin >> code;
+        switch(code){
+            case 1:
+           checkSaving();
+           cout << "Your saving is Rp." << account_info.saving << endl;
+            break;
+            case 2:
+            withdraw();
+              break;
+            case 3:
+            deposit();
+              break;
+            case 4:
+            cout << "Transfer Money" << endl;
+              transferMoney();
+              break;
+            case 5:
+            cout << "Frezze Account" << endl;
+            frezze();
+              break;
+            case 6:
+            cout << "Your History" << endl;
+            printHistory();
+              break;
+            case 7:
+            exec sql insert into tx_history(actor,action,info) values (:uid,'Logout',:account_info.username||' Logout from NDS BANK');
+            exec sql commit;
+            cout << "Thank you for using NDS Bank, See you later" << endl;
+            uid=0;
+            break;
+            default:
+            cout << "enter Correct Option" << endl;
+        }
+        cout << "Press Any Key To Continue";
+        cin.clear();
+       
+        _getch();
+        system("cls");
+        }
+
+      }
+
+    
+}
+
