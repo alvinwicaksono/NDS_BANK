@@ -136,6 +136,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="bank.pc" />
+    <None Include="ndsbank.sql" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="bank.cpp" />

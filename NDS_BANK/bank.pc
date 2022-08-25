@@ -28,7 +28,8 @@ struct{
     char userid[20];
     char action[20];
     char time[20];
-    char info[50];
+    char deskripsi[50];
+    char info[10];
 }history_info;
 
 
@@ -55,13 +56,15 @@ class History{
     int userId;
     string action;
     string time;
+    string deskripsi;
     string info;
 
     public:
-    History(int u, string a, string t, string i){
+    History(int u, string a, string t, string d,  string i){
         userId = u;
         action = a;
         time = t;
+        deskripsi = d;
         info = i;
     };
 
@@ -74,9 +77,14 @@ class History{
     string getTime() {
         return time;
     }
+
+    string getDeskripsi(){
+        return deskripsi;
+    }
     string getInfo() {
         return info;
     }
+
 
 
 };
@@ -104,8 +112,12 @@ void registerAccount() {
     checkConn();
 
 
-    while(i>0){
+    while(i>0 || strlen(account_info.username)<6 ){
+        if(i>0){
         cout << endl << "Username already Exist, Try Again!" << endl;
+        } else {
+        cout << endl << "Username must contain Min 6 Characters!" << endl;
+        }
         cin.clear();
         cin.ignore();
         cout << "Enter Username : "; 
@@ -119,8 +131,12 @@ void registerAccount() {
     cout << endl << "Enter Password Confirmation :";
     cin >> confirm;
 
-    while( strcmp(account_info.password,confirm) !=0 ){
-    cout << "Password not match, Input again" << endl;
+    while( strcmp(account_info.password,confirm) !=0 || strlen(account_info.password)<6 ){
+    if(strlen(account_info.password)<6){
+            cout << endl << "Password must contain Min 6 Characters!" << endl;
+    } else {
+        cout << "Password not match, Input again" << endl;
+    }
     cout << endl << "Enter Password : ";
     cin >> account_info.password;
     cout << endl << "Enter Password Confirmation :";
@@ -134,7 +150,7 @@ void registerAccount() {
     exec sql commit;
     exec sql select id into :uid from ms_users where username = :account_info.username;
     checkConn();
-    exec sql insert into tx_history(actor,action,info) values (:uid,'Register','Success Register '||:account_info.username||' Account');
+    exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Register','Success Register '||:account_info.username||' Account', 'Success');
     exec sql commit;
     checkConn();
     uid=0;
@@ -155,10 +171,12 @@ void loginAccount(){
     } else {
         exec sql select id, status into :uid, :account_info.status from ms_users where username = :account_info.username and password = :account_info.password;
         if(strcmp(account_info.status,"N") > 0){
+        exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Login',:account_info.username||' Login to NDS BANK', 'Failed');
+        exec sql commit;
          cout << "Your Account status is freeze, Please contact Call Center to Using Account" << endl; 
          uid = 0;
         } else {
-         exec sql insert into tx_history(actor,action,info) values (:uid,'Login',:account_info.username||' Login to NDS BANK');
+         exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Login',:account_info.username||' Login to NDS BANK', 'Success');
          exec sql commit;
          cout << endl << "Welcome, " << account_info.username << " Enjoy using NDS Bank" << endl;
         }
@@ -187,6 +205,9 @@ void withdraw(){
     if(n%50000!=0){
         cout << endl << "Nominal harus kelipatan 50.000, masukan ulang" << endl;
     } else {
+        exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Withdraw','Withdraw  Rp '||:n, 'Failed');
+        exec sql commit;
+        checkConn();
         cout << endl << "Your Saving : Rp." << account_info.saving << endl; 
         cout << "Saldo anda tidak mencukupi, masukan ulang" << endl;
     }
@@ -197,7 +218,7 @@ void withdraw(){
     exec sql open c_saving;
     exec sql fetch c_saving into :account_info.saving;
     exec sql update ms_savings set saving = :account_info.saving-:n where current of c_saving;
-    exec sql insert into tx_history(actor,action,info) values (:uid,'Withdraw','Withdraw  Rp '||:n);
+    exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Withdraw','Withdraw  Rp '||:n, 'Success');
     checkConn();
     exec sql commit;
     exec sql close c_saving;
@@ -222,7 +243,7 @@ void deposit(){
     exec sql open c_saving;
     exec sql fetch c_saving into :account_info.saving;
     exec sql update ms_savings set saving = :account_info.saving+:n where current of c_saving;
-    exec sql insert into tx_history(actor,action,info) values (:uid,'Deposit','Deposit  Rp '||:n);
+    exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Deposit','Deposit  Rp '||:n, 'Success');
 
     checkConn();
     exec sql commit;
@@ -247,15 +268,20 @@ void transferMoney(){
         cout << endl << "Enter Nominal: ";
         cin >> n;
         if(n>account_info.saving){
+            exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Transfer','Transfer Rp '||:n||' to User ID ' || :receiver_info.receiverId, 'Failed');
+            exec sql commit;
+            checkConn();
             cout << "Your saving less than Nominal !!, Try Again" << endl;
         } else {
             exec sql open c_saving;
             exec sql fetch c_saving into :account_info.saving;
             exec sql update ms_savings set saving = :account_info.saving-:n where current of c_saving;
-            exec sql insert into tx_history(actor,action,info) values (:uid,'Transfer','Transfer Rp '||:n||' to User ID ' || :receiver_info.receiverId);
+            checkConn();
+            exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Transfer','Transfer Rp '||:n||' to User ID ' || :receiver_info.receiverId, 'Success');
             checkConn();
             exec sql update ms_savings set saving = :receiver_info.saving+:n where user_id = :receiver_info.receiverId;
-            exec sql insert into tx_history(actor,action,info) values (:receiver_info.receiverId,'Transfer','Incomming Saving Rp '||:n||' From User ID ' || :uid);
+            checkConn();
+            exec sql insert into tx_history(actor,action,deskripsi,info) values (:receiver_info.receiverId,'Transfer','Incomming Saving Rp '||:n||' From User ID ' || :uid, 'Success');
             exec sql commit;
             checkConn();
             exec sql close c_saving;
@@ -270,7 +296,7 @@ void frezze(){
 exec sql update ms_users set status = 'N' where id = :uid;
 exec sql commit;
 checkConn();
-exec sql insert into tx_history(actor,action,info) values (:uid,'Freeze',:account_info.username||' Account Freeze from NDS BANK');
+exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Freeze',:account_info.username||' Account Freeze from NDS BANK', 'Success');
 exec sql commit;
 checkConn();
 cout << "Account anda berhasil di frezze" << endl;
@@ -282,25 +308,25 @@ void printHistory(){
     vector<History*> histories;
 
     EXEC SQL DECLARE c_history CURSOR FOR
-                    SELECT action, time, info 
-                    FROM tx_history WHERE actor = :uid order by id;
+                    SELECT action, time, deskripsi, info 
+                    FROM tx_history WHERE actor = :uid and action != 'Register' and action != 'Login' and action != 'Logout' order by id;
 
     	exec sql open c_history;
 		EXEC SQL WHENEVER NOT FOUND DO break;
       
         for(;;)
         {
-		exec sql fetch c_history into :history_info.action, :history_info.time, :history_info.info;
+		exec sql fetch c_history into :history_info.action, :history_info.time, :history_info.deskripsi, :history_info.info;
 		checkConn();
-        histories.push_back(new History(uid, history_info.action, history_info.time, history_info.info));
+        histories.push_back(new History(uid, history_info.action, history_info.time, history_info.deskripsi, history_info.info));
         }
         exec sql close c_history;
 
-        cout << "no\t Action\t\t\t Time\t\t\t Info" << endl;
+        cout << "no\t Action\t\t\t Time\t\t \tDeskripsi \t\t\t\t\t Info" << endl;
         int counter=0;
         for(int j=0; j<histories.size(); j++){
            counter++;
-           cout << counter <<"\t" << histories.at(j)->getAction() << "\t" << histories.at(j)->getTime() << "\t" << histories.at(j)->getInfo() << endl;
+           cout << counter <<"\t" << histories.at(j)->getAction() << "\t" << histories.at(j)->getTime() << "\t" << histories.at(j)->getDeskripsi()  << histories.at(j)->getInfo() << endl;
         }
 
 
@@ -377,7 +403,7 @@ int main()
             printHistory();
               break;
             case 7:
-            exec sql insert into tx_history(actor,action,info) values (:uid,'Logout',:account_info.username||' Logout from NDS BANK');
+            exec sql insert into tx_history(actor,action,deskripsi,info) values (:uid,'Logout',:account_info.username||' Logout from NDS BANK','Success');
             exec sql commit;
             cout << "Thank you for using NDS Bank, See you later" << endl;
             uid=0;
